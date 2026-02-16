@@ -26,7 +26,8 @@ function MOI.get(o::Optimizer, ::MOI.TerminationStatus)
     if o.scip_solve_status == _kSCIP_SOLVE_STATUS_NOT_CALLED
         return MOI.OPTIMIZE_NOT_CALLED
     end
-    return _TERMINATION_STATUS_MAP[SCIPgetStatus(o)]
+    status = SCIPgetStatus(o)
+    return get(_TERMINATION_STATUS_MAP, status, MOI.OTHER_ERROR)
 end
 
 function MOI.get(o::Optimizer, attr::MOI.PrimalStatus)

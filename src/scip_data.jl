@@ -3,6 +3,25 @@
 # Use of this source code is governed by an MIT-style license that can be found
 # in the LICENSE.md file or at https://opensource.org/licenses/MIT.
 
+"True if the SCIP-SDP symbol is present in the loaded library (no SCIP instance)."
+function _sdp_symbol_available()::Bool
+    handle = Libdl.dlopen(libscip; throw_error=false)
+    (handle === C_NULL || !(handle isa Ptr)) && return false
+    ptr = Libdl.dlsym(handle, :SCIPSDPincludeDefaultPlugins; throw_error=false)
+    return ptr !== C_NULL && ptr isa Ptr
+end
+
+"""
+    sdp_available()::Bool
+
+Return `true` if the loaded SCIP library provides SCIP-SDP (symbol
+`SCIPSDPincludeDefaultPlugins` is present). When this is true, `SCIP.Optimizer(allow_sdp=true)`
+will attempt to load SCIP-SDP (trying default→SDP, SDP→default, or default-only for combined builds).
+"""
+function sdp_available()::Bool
+    return _sdp_symbol_available()
+end
+
 """
     _try_include_scipsdp_plugins(scip_ptr)
 
@@ -12,11 +31,45 @@ the symbol is not available (e.g. standard SCIP without SCIP-SDP).
 """
 function _try_include_scipsdp_plugins(scip_ptr::Ptr{Cvoid})::Bool
     ptr = Libdl.dlsym(Libdl.dlopen(libscip), :SCIPSDPincludeDefaultPlugins; throw_error=false)
-    if ptr === C_NULL
-        return false
-    end
+    (ptr === C_NULL || !(ptr isa Ptr)) && return false
     ret = ccall(ptr, Cint, (Ptr{Cvoid},), scip_ptr)
     return ret == 1  # SCIP_OKAY
+end
+
+"Run SDP plugin inclusion logic, with stderr redirected to suppress expected C-level errors on some builds."
+function _do_sdp_plugin_inclusion!(scip::Ref{Ptr{SCIP_}})
+    redirect_stderr(devnull) do
+        # Order 0: SDP only (matches command-line SCIP-SDP binary: create then SCIPSDPincludeDefaultPlugins only)
+        if _try_include_scipsdp_plugins(scip[])
+            return  # success; no SCIPincludeDefaultPlugins so we match the binary's plugin set
+        end
+        # Order 1: default then SDP
+        @SCIP_CALL SCIPincludeDefaultPlugins(scip[])
+        if _try_include_scipsdp_plugins(scip[])
+            return  # success
+        end
+        # Order 2: SDP then default (free and recreate)
+        @SCIP_CALL SCIPfree(scip)
+        scip[] = C_NULL
+        @SCIP_CALL SCIPcreate(scip)
+        if _try_include_scipsdp_plugins(scip[])
+            try
+                @SCIP_CALL SCIPincludeDefaultPlugins(scip[])
+            catch
+                # SDP then default failed; get a clean SDP-only instance (match command-line binary)
+                @SCIP_CALL SCIPfree(scip)
+                scip[] = C_NULL
+                @SCIP_CALL SCIPcreate(scip)
+                _try_include_scipsdp_plugins(scip[]) || error("SCIP-SDP: SCIPSDPincludeDefaultPlugins failed on clean instance.")
+            end
+            return
+        end
+        # Order 3: default only (combined builds where default plugins already include SDP)
+        @SCIP_CALL SCIPfree(scip)
+        scip[] = C_NULL
+        @SCIP_CALL SCIPcreate(scip)
+        @SCIP_CALL SCIPincludeDefaultPlugins(scip[])
+    end
 end
 
 "Type-safe wrapper for `Int64`, references a variable."
@@ -81,13 +134,11 @@ mutable struct SCIPData
         scip = Ref{Ptr{SCIP_}}(C_NULL)
         @SCIP_CALL SCIPcreate(scip)
         @assert scip[] != C_NULL
-        @SCIP_CALL SCIPincludeDefaultPlugins(scip[])
-        if sdp_enabled && !_try_include_scipsdp_plugins(scip[])
-            error(
-                "SCIP-SDP was requested (allow_sdp=true) but the loaded SCIP library " *
-                "does not include SCIP-SDP. Use a SCIP build compiled with SCIP-SDP " *
-                "and set SCIPOPTDIR to its installation path.",
-            )
+        if sdp_enabled
+            # Suppress C-level error output during plugin inclusion (some attempts are expected to fail on some builds)
+            _do_sdp_plugin_inclusion!(scip)
+        else
+            @SCIP_CALL SCIPincludeDefaultPlugins(scip[])
         end
         @SCIP_CALL SCIPcreateProbBasic(scip[], "")
         scip_data = new(
@@ -424,6 +475,8 @@ end
 
 """
 Add SDP constraint (requires SCIP-SDP). Matrix is lower triangle; (row, col) 1-based, row >= col.
+SCIP-SDP enforces (sum_j A_j y_j) - A_0 ⪰ 0; we expect const_entries to be the constant matrix that is
+*subtracted* (so pass negative of MOI constants: MOI uses F(x) + const ⪰ 0, SCIP uses F(x) - const ⪰ 0).
 var_entries[j] = [(row, col, coef), ...] for variable j; const_entries = [(row, col, coef), ...].
 """
 function add_sdp_constraint(
@@ -449,7 +502,8 @@ function add_sdp_constraint(
     constnnonz = length(const_entries)
     constrow = Cint[r - 1 for (r, _, _) in const_entries]
     constcol = Cint[c - 1 for (_, c, _) in const_entries]
-    constval = Cdouble[v for (_, _, v) in const_entries]
+    # SCIP-SDP: PSD matrix = (variable part) - (constant part); MOI uses (variable part) + (constant part)
+    constval = Cdouble[-v for (_, _, v) in const_entries]
     cons__ = Ref{Ptr{SCIP_CONS}}(C_NULL)
     create_sdp = Libdl.dlsym(Libdl.dlopen(libscip), :SCIPcreateConsSdp; throw_error=false)
     if create_sdp === C_NULL
@@ -477,7 +531,7 @@ function add_sdp_constraint(
             Cint,
         ),
         scipd.scip[],
-        Ref(cons__),
+        cons__,
         name,
         nvars,
         nnonz,

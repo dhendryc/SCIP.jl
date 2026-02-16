@@ -74,9 +74,9 @@ set_attribute(model, "display/verblevel", 0)
 set_attribute(model, "limits/gap", 0.05)
 ```
 
-## SCIP-SDP (semidefinite programming)
+## SCIP-SDP (mixed-integer semidefinite programming)
 
-If you use a **custom SCIP build compiled with [SCIP-SDP](https://github.com/scipopt/SCIP-SDP)** and set `SCIPOPTDIR`, you can enable SDP support by creating the optimizer with `allow_sdp=true`:
+SCIP-SDP is for **mixed-integer semidefinite programming (MISDP)**. If you use a **custom SCIP build compiled with [SCIP-SDP](https://github.com/scipopt/SCIP-SDP)** and set `SCIPOPTDIR`, you can enable SDP support by creating the optimizer with `allow_sdp=true`. Run `Pkg.build("SCIP")` after setting `SCIPOPTDIR` so the correct library is loaded; when both `libscip` and `libscipsdp` exist in your install, the build prefers `libscipsdp`.
 
 ```julia
 using JuMP, SCIP

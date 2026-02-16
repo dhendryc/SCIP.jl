@@ -64,7 +64,8 @@ function MOI.add_constraint(
         row, col = _moi_psd_index_to_upper_triangle(output_index, n)
         push!(const_entries, (row, col, c))
     end
-    # Order variables by VarRef value for deterministic ordering
+    # Order variables by VarRef value for deterministic ordering.
+    # add_sdp_constraint negates constants (SCIP-SDP: PSD = var - const; MOI: PSD = var + const).
     var_refs = sort!(collect(keys(var_entries)); by=vr -> vr.val)
     var_entries_list = [var_entries[vr] for vr in var_refs]
     cr = add_sdp_constraint(

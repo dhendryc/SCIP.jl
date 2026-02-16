@@ -52,8 +52,8 @@ if haskey(ENV, "SCIPOPTDIR")
     if isfile(scipoptdir)
         push!(paths_to_try, scipoptdir)
     elseif isdir(scipoptdir)
-        # Otherwise treat as installation directory: try bin/ and lib/ with both library names
-        for name in (libname, libname_sdp)
+        # Prefer SDP library when both exist (libscipsdp has SCIP-SDP symbols; libscip may be plain SCIP)
+        for name in (libname_sdp, libname)
             push!(paths_to_try, joinpath(scipoptdir, "bin", name))
             push!(paths_to_try, joinpath(scipoptdir, "lib", name))
         end
