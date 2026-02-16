@@ -3,6 +3,22 @@
 # Use of this source code is governed by an MIT-style license that can be found
 # in the LICENSE.md file or at https://opensource.org/licenses/MIT.
 
+"""
+    _try_include_scipsdp_plugins(scip_ptr)
+
+Try to include SCIP-SDP plugins (SDP constraint handler and relaxator) when using a
+SCIP build that was compiled with SCIP-SDP. Returns `true` if successful, `false` if
+the symbol is not available (e.g. standard SCIP without SCIP-SDP).
+"""
+function _try_include_scipsdp_plugins(scip_ptr::Ptr{Cvoid})::Bool
+    ptr = Libdl.dlsym(Libdl.dlopen(libscip), :SCIPSDPincludeDefaultPlugins; throw_error=false)
+    if ptr === C_NULL
+        return false
+    end
+    ret = ccall(ptr, Cint, (Ptr{Cvoid},), scip_ptr)
+    return ret == 1  # SCIP_OKAY
+end
+
 "Type-safe wrapper for `Int64`, references a variable."
 struct VarRef
     val::Int64
@@ -61,11 +77,18 @@ mutable struct SCIPData
     # to store expressions for release
     nonlinear_storage::Vector{NonlinExpr}
 
-    function SCIPData()
+    function SCIPData(; sdp_enabled::Bool=false)
         scip = Ref{Ptr{SCIP_}}(C_NULL)
         @SCIP_CALL SCIPcreate(scip)
         @assert scip[] != C_NULL
         @SCIP_CALL SCIPincludeDefaultPlugins(scip[])
+        if sdp_enabled && !_try_include_scipsdp_plugins(scip[])
+            error(
+                "SCIP-SDP was requested (allow_sdp=true) but the loaded SCIP library " *
+                "does not include SCIP-SDP. Use a SCIP build compiled with SCIP-SDP " *
+                "and set SCIPOPTDIR to its installation path.",
+            )
+        end
         @SCIP_CALL SCIPcreateProbBasic(scip[], "")
         scip_data = new(
             scip,
@@ -395,6 +418,84 @@ function add_indicator_constraint(scipd::SCIPData, y, x, a, rhs)
         a,
         rhs,
     )
+    @SCIP_CALL SCIPaddCons(scipd, cons__[])
+    return store_cons!(scipd, cons__)
+end
+
+"""
+Add SDP constraint (requires SCIP-SDP). Matrix is lower triangle; (row, col) 1-based, row >= col.
+var_entries[j] = [(row, col, coef), ...] for variable j; const_entries = [(row, col, coef), ...].
+"""
+function add_sdp_constraint(
+    scipd::SCIPData,
+    name::String,
+    blocksize::Int,
+    var_refs::Vector{VarRef},
+    var_entries::Vector{Vector{Tuple{Int,Int,Float64}}},
+    const_entries::Vector{Tuple{Int,Int,Float64}},
+)
+    @assert length(var_refs) == length(var_entries)
+    nvars = length(var_refs)
+    vars_ptrs = [var(scipd, vr) for vr in var_refs]
+    nvarnonz = Cint[length(entries) for entries in var_entries]
+    nnonz = sum(nvarnonz)
+    # 0-based (row, col) for C API
+    all_row = [Cint[r - 1 for (r, _, _) in entries] for entries in var_entries]
+    all_col = [Cint[c - 1 for (_, c, _) in entries] for entries in var_entries]
+    all_val = [Cdouble[v for (_, _, v) in entries] for entries in var_entries]
+    row_ptrs = Ptr{Cint}[pointer(a) for a in all_row]
+    col_ptrs = Ptr{Cint}[pointer(a) for a in all_col]
+    val_ptrs = Ptr{Cdouble}[pointer(a) for a in all_val]
+    constnnonz = length(const_entries)
+    constrow = Cint[r - 1 for (r, _, _) in const_entries]
+    constcol = Cint[c - 1 for (_, c, _) in const_entries]
+    constval = Cdouble[v for (_, _, v) in const_entries]
+    cons__ = Ref{Ptr{SCIP_CONS}}(C_NULL)
+    create_sdp = Libdl.dlsym(Libdl.dlopen(libscip), :SCIPcreateConsSdp; throw_error=false)
+    if create_sdp === C_NULL
+        error("SCIPcreateConsSdp not found; SCIP-SDP is required for SDP constraints.")
+    end
+    ret = ccall(
+        create_sdp,
+        Cint,
+        (
+            Ptr{Cvoid},
+            Ptr{Ptr{Cvoid}},
+            Ptr{Cchar},
+            Cint,
+            Cint,
+            Cint,
+            Ptr{Cint},
+            Ptr{Ptr{Cint}},
+            Ptr{Ptr{Cint}},
+            Ptr{Ptr{Cdouble}},
+            Ptr{Ptr{Cvoid}},
+            Cint,
+            Ptr{Cint},
+            Ptr{Cint},
+            Ptr{Cdouble},
+            Cint,
+        ),
+        scipd.scip[],
+        Ref(cons__),
+        name,
+        nvars,
+        nnonz,
+        blocksize,
+        nvarnonz,
+        pointer(col_ptrs),
+        pointer(row_ptrs),
+        pointer(val_ptrs),
+        pointer(vars_ptrs),
+        constnnonz,
+        length(const_entries) > 0 ? pointer(constcol) : C_NULL,
+        length(const_entries) > 0 ? pointer(constrow) : C_NULL,
+        length(const_entries) > 0 ? pointer(constval) : C_NULL,
+        TRUE,
+    )
+    if ret != 1
+        error("SCIPcreateConsSdp returned $ret")
+    end
     @SCIP_CALL SCIPaddCons(scipd, cons__[])
     return store_cons!(scipd, cons__)
 end

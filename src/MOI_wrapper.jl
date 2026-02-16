@@ -10,6 +10,15 @@ const BOUNDS = Union{
     MOI.Interval{Float64},
 }
 
+# Set types for which ConstraintName is supported (non–VariableIndex constraints)
+const CONSTR_NAME_SUPPORTED_SETS = Union{
+    BOUNDS,
+    MOI.Indicator{MOI.ACTIVATE_ON_ONE,MOI.LessThan{Float64}},
+    MOI.SOS1{Float64},
+    MOI.SOS2{Float64},
+    MOI.PositiveSemidefiniteConeTriangle,
+}
+
 @enum(
     _SCIP_SOLVE_STATUS,
     _kSCIP_SOLVE_STATUS_NOT_CALLED,
@@ -48,10 +57,11 @@ mutable struct Optimizer <: MOI.AbstractOptimizer
         Nothing,
         Dict{String,Union{Nothing,MOI.ConstraintIndex}},
     }
+    sdp_enabled::Bool
 
-    function Optimizer(; kwargs...)
+    function Optimizer(; allow_sdp::Bool=false, kwargs...)
         o = new(
-            SCIPData(),
+            SCIPData(; sdp_enabled=allow_sdp),
             Dict{Ptr{Cvoid},Union{VarRef,ConsRef}}(),
             Dict{Tuple{Type,Type},Set{ConsRef}}(),
             Dict{MOI.VariableIndex,MOI.Interval{Float64}}(),
@@ -66,6 +76,7 @@ mutable struct Optimizer <: MOI.AbstractOptimizer
             _kSCIP_SOLVE_STATUS_NOT_CALLED,
             nothing,
             nothing,
+            allow_sdp,
         )
         # Set all parameters given as keyword arguments, replacing the
         # delimiter, since "/" is used by all SCIP parameters, but is not
@@ -99,7 +110,7 @@ function MOI.empty!(o::Optimizer)
     empty!(o.binbounds)
     empty!(o.bound_types)
     empty!(o.start)
-    o.inner = SCIPData()
+    o.inner = SCIPData(; sdp_enabled=o.sdp_enabled)
     # reapply parameters
     for pair in o.params
         set_parameter(o.inner, pair.first, pair.second)
@@ -340,6 +351,37 @@ function MOI.set(o::Optimizer, ::MOI.Name, name::String)
     return
 end
 
+# SCIP.SDPSolvingMode (only when allow_sdp=true)
+
+"""
+    SDPSolvingMode
+
+Attribute for choosing how SCIP-SDP solves the SDP relaxations (only has effect when
+the optimizer was created with `allow_sdp=true`).
+
+- `:branch_and_bound` or `true`: Use SDP relaxations in the branch-and-bound (parameter `misc/solvesdps = 1`).
+- `:outer_approximation` or `false`: Use outer approximation with LP relaxations only (parameter `misc/solvesdps = 0`).
+"""
+struct SDPSolvingMode <: MOI.AbstractOptimizerAttribute end
+
+MOI.supports(o::Optimizer, ::SDPSolvingMode) = true
+
+function MOI.get(o::Optimizer, ::SDPSolvingMode)
+    raw = MOI.get(o, MOI.RawOptimizerAttribute("misc/solvesdps"))
+    return raw == 1 ? :branch_and_bound : :outer_approximation
+end
+
+function MOI.set(o::Optimizer, ::SDPSolvingMode, value::Symbol)
+    v = value === :branch_and_bound ? 1 :
+        (value === :outer_approximation ? 0 :
+         error("SDPSolvingMode must be :branch_and_bound or :outer_approximation, got :$value"))
+    return MOI.set(o, MOI.RawOptimizerAttribute("misc/solvesdps"), v)
+end
+
+function MOI.set(o::Optimizer, ::SDPSolvingMode, value::Bool)
+    return MOI.set(o, MOI.RawOptimizerAttribute("misc/solvesdps"), value ? 1 : 0)
+end
+
 # SCIP.Presolving
 
 """
@@ -488,6 +530,7 @@ include(joinpath("MOI_wrapper", "variable.jl"))
 include(joinpath("MOI_wrapper", "constraints.jl"))
 include(joinpath("MOI_wrapper", "linear_constraints.jl"))
 include(joinpath("MOI_wrapper", "quadratic_constraints.jl"))
+include(joinpath("MOI_wrapper", "sdp_constraints.jl"))
 include(joinpath("MOI_wrapper", "sos_constraints.jl"))
 include(joinpath("MOI_wrapper", "indicator_constraints.jl"))
 include(joinpath("MOI_wrapper", "nonlinear_constraints.jl"))

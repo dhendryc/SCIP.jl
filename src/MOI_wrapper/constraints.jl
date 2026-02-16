@@ -15,7 +15,7 @@ function MOI.supports(
         MOI.VectorAffineFunction{Float64},
         MOI.VectorOfVariables,
     },
-    S,
+    S<:CONSTR_NAME_SUPPORTED_SETS,
 }
     return true
 end
@@ -23,7 +23,7 @@ end
 function MOI.get(
     o::Optimizer,
     ::MOI.ConstraintName,
-    ci::MOI.ConstraintIndex{F},
+    ci::MOI.ConstraintIndex{F,S},
 )::String where {
     F<:Union{
         MOI.ScalarAffineFunction{Float64},
@@ -32,6 +32,7 @@ function MOI.get(
         MOI.VectorAffineFunction{Float64},
         MOI.VectorOfVariables,
     },
+    S<:CONSTR_NAME_SUPPORTED_SETS,
 }
     return unsafe_string(SCIPconsGetName(cons(o, ci)))
 end
@@ -39,7 +40,7 @@ end
 function MOI.set(
     o::Optimizer,
     ::MOI.ConstraintName,
-    ci::MOI.ConstraintIndex{F},
+    ci::MOI.ConstraintIndex{F,S},
     name::String,
 ) where {
     F<:Union{
@@ -49,6 +50,7 @@ function MOI.set(
         MOI.VectorAffineFunction{Float64},
         MOI.VectorOfVariables,
     },
+    S<:CONSTR_NAME_SUPPORTED_SETS,
 }
     @SCIP_CALL SCIPchgConsName(o, cons(o, ci), name)
     o.name_to_constraint_index = nothing

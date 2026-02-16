@@ -33,15 +33,34 @@ else
     error("SCIP is currently not supported on \"$(Sys.KERNEL)\"")
 end
 
-paths_to_try = []
-
-# prefer environment variable
-if haskey(ENV, "SCIPOPTDIR")
-    push!(paths_to_try, joinpath(ENV["SCIPOPTDIR"], "bin", libname))
-    push!(paths_to_try, joinpath(ENV["SCIPOPTDIR"], "lib", libname))
+# SCIP-SDP builds may ship the library as libscipsdp
+libname_sdp = if Sys.islinux()
+    "libscipsdp.so"
+elseif Sys.isapple()
+    "libscipsdp.dylib"
+elseif Sys.iswindows()
+    "libscipsdp.dll"
+else
+    libname
 end
 
-# but also try library path
+paths_to_try = String[]
+
+if haskey(ENV, "SCIPOPTDIR")
+    scipoptdir = ENV["SCIPOPTDIR"]
+    # If SCIPOPTDIR is a path to the library file itself, use it directly
+    if isfile(scipoptdir)
+        push!(paths_to_try, scipoptdir)
+    elseif isdir(scipoptdir)
+        # Otherwise treat as installation directory: try bin/ and lib/ with both library names
+        for name in (libname, libname_sdp)
+            push!(paths_to_try, joinpath(scipoptdir, "bin", name))
+            push!(paths_to_try, joinpath(scipoptdir, "lib", name))
+        end
+    end
+end
+
+# fallback: search by library name in default locations
 push!(paths_to_try, libname)
 
 found = false
@@ -63,7 +82,8 @@ Unable to locate SCIP installation. Tried:
 
 $(join(tried, "\n\n"))
 
-Note that this must be downloaded separately from https://scipopt.org.
-Please set the environment variable SCIPOPTDIR to SCIP's installation path.
+Set SCIPOPTDIR to either:
+  - the installation directory (e.g. /path/to/SCIP-SDP/build), or
+  - the full path to the library file (e.g. .../build/lib/libscip.dylib or .../libscipsdp.dylib).
 """)
 end

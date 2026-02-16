@@ -49,10 +49,10 @@ binaries.
 Binaries are available for download at [https://www.scipopt.org/#download](https://www.scipopt.org/#download).
 
 Once the binaries are installed, set the `SCIPOPTDIR` environment variable to
-temporarily point to the installation path (that is, depending on your operating
-system, `$SCIPOPTDIR/lib/libscip.so`, `$SCIPOPTDIR/lib/libscip.dylib`, or
-`$SCIPOPTDIR/bin/libscip.dll` must exist). Then, install `SCIP.jl` using `Pkg.add`
-and `Pkg.build` from the Julia command line:
+either the installation directory (e.g. `/path/to/SCIP-SDP/build`, so that
+`libscip.dylib` or `libscipsdp.dylib` is in `$SCIPOPTDIR/lib` or `$SCIPOPTDIR/bin`)
+or the full path to the library file (e.g. `.../build/lib/libscipsdp.dylib`).
+Then install `SCIP.jl` using `Pkg.add` and `Pkg.build` from the Julia command line:
 ```julia
 julia> ENV["SCIPOPTDIR"] = raw"C:\Program Files\SCIPOptSuite 9.1.1" # for Windows
 
@@ -73,6 +73,23 @@ model = Model(SCIP.Optimizer)
 set_attribute(model, "display/verblevel", 0)
 set_attribute(model, "limits/gap", 0.05)
 ```
+
+## SCIP-SDP (semidefinite programming)
+
+If you use a **custom SCIP build compiled with [SCIP-SDP](https://github.com/scipopt/SCIP-SDP)** and set `SCIPOPTDIR`, you can enable SDP support by creating the optimizer with `allow_sdp=true`:
+
+```julia
+using JuMP, SCIP
+model = Model(() -> SCIP.Optimizer(allow_sdp=true))
+# Add SDP constraints via JuMP, e.g. @constraint(model, X in PSDCone())
+```
+
+SCIP-SDP supports two solving modes (set before optimizing):
+
+- **Branch-and-bound with SDP relaxations**: `MOI.set(model, SCIP.SDPSolvingMode(), :branch_and_bound)` or raw parameter `misc/solvesdps = 1`
+- **Outer approximation (LP only)**: `MOI.set(model, SCIP.SDPSolvingMode(), :outer_approximation)` or `misc/solvesdps = 0`
+
+Without a custom SCIP-SDP build, `allow_sdp` defaults to `false` and SDP constraints are not supported.
 
 ## Options
 
@@ -114,6 +131,7 @@ List of supported constraint types:
  * [`MOI.VectorAffineFunction{Float64}`](@ref) in [`MOI.Indicator{MOI.ACTIVATE_ON_ONE,MOI.LessThan{Float64}}`](@ref)
  * [`MOI.VectorOfVariables`](@ref) in [`MOI.SOS1{Float64}`](@ref)
  * [`MOI.VectorOfVariables`](@ref) in [`MOI.SOS2{Float64}`](@ref)
+ * [`MOI.VectorAffineFunction{Float64}`](@ref) in [`MOI.PositiveSemidefiniteConeTriangle`](@ref) (when `allow_sdp=true` and SCIP is built with SCIP-SDP)
 
 List of supported model attributes:
 
