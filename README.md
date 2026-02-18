@@ -77,6 +77,11 @@ SCIP-SDP can run in two modes (set before optimize):
 
 Set these via `MOI.RawOptimizerAttribute`, e.g. `MOI.set(model, MOI.RawOptimizerAttribute("relaxing/SDP/freq"), -1)`.
 
+```julia
+   export SCIP_SDP_OPTDIR="/Users/deborah/SCIP-SDP/build
+   julia --project -e 'using Pkg; Pkg.build("SCIP")'
+```
+
 ## Use with JuMP
 
 Use SCIP with JuMP as follows:

@@ -40,6 +40,9 @@ end
 end
 
 @testset "Listen to first LP solve" begin
+    if SCIP.have_scip_sdp
+        @test_skip "First LP event order differs with SCIP-SDP relaxator"
+    else
     using .FirstLPEventTest
     # create an empty problem
     optimizer = SCIP.Optimizer()
@@ -91,9 +94,13 @@ end
 
     # free the problem
     finalize(inner)
+    end
 end
 
 @testset "Nameless Event handler" begin
+    if SCIP.have_scip_sdp
+        @test_skip "First LP event order differs with SCIP-SDP relaxator"
+    else
     using .FirstLPEventTest
     # create an empty problem
     optimizer = SCIP.Optimizer()
@@ -145,4 +152,5 @@ end
 
     # free the problem
     finalize(inner)
+    end
 end

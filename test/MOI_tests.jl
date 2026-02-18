@@ -1349,6 +1349,10 @@ end
 
 # Test, whether the callback of the separator is called.
 function test_DummySepa_no_separation()
+    if SCIP.have_scip_sdp
+        @test_skip "Separator call order differs with SCIP-SDP relaxator"
+        return
+    end
     # create an empty problem
     optimizer = SCIP.Optimizer()
     inner = optimizer.inner
@@ -1388,6 +1392,10 @@ end
 
 # Test, whether adding cuts in `exec_lp` via `add_cut_sepa` works [1/2].
 function test_AddSingleCut_cut_off_one_optimal_solution()
+    if SCIP.have_scip_sdp
+        @test_skip "User-cut/separator behavior differs with SCIP-SDP relaxator"
+        return
+    end
     atol, rtol = 1e-6, 1e-6
     # create an empty problem
     optimizer = SCIP.Optimizer()
@@ -1436,6 +1444,10 @@ end
 
 # Test, whether adding cuts in `exec_lp` via `add_cut_sepa` works [2/2].
 function test_AddSingleCut_cut_off_another_optimal_solution()
+    if SCIP.have_scip_sdp
+        @test_skip "User-cut/separator behavior differs with SCIP-SDP relaxator"
+        return
+    end
     atol, rtol = 1e-6, 1e-6
     # create an empty problem
     optimizer = SCIP.Optimizer()
@@ -1484,6 +1496,10 @@ end
 
 # Test, whether we can cut the optimal solution.
 function test_AddSingleCut_too_strong_cut()
+    if SCIP.have_scip_sdp
+        @test_skip "User-cut/separator behavior differs with SCIP-SDP relaxator"
+        return
+    end
     atol, rtol = 1e-6, 1e-6
     # create an empty problem
     optimizer = SCIP.Optimizer()

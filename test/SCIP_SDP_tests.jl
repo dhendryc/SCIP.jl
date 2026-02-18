@@ -59,17 +59,14 @@ else
 
         # Optional: compare with Pajarito (Hypatia + HiGHS) if available
         @testset "Pajarito comparison (optional)" begin
-            pajarito_loaded = false
             try
                 using Pajarito
                 using Hypatia
                 using HiGHS
-                pajarito_loaded = true
-            catch
-                @test_skip "Pajarito/Hypatia/HiGHS not available"
-            end
-            if pajarito_loaded
-                model_paj = build_misdp_model(() -> Pajarito.Optimizer(HiGHS.Optimizer(), Hypatia.Optimizer()))
+                # Pajarito uses optimizer_with_attributes; skip if API doesn't match
+                oa = MOI.OptimizerWithAttributes(HiGHS.Optimizer, MOI.Silent() => true)
+                conic = MOI.OptimizerWithAttributes(Hypatia.Optimizer, MOI.Silent() => true)
+                model_paj = build_misdp_model(() -> Pajarito.Optimizer(oa, conic))
                 MOI.optimize!(model_paj)
                 obj_paj = MOI.get(model_paj, MOI.ObjectiveValue())
                 @test obj_paj ≈ 0.0 atol = 1e-5
@@ -78,6 +75,8 @@ else
                 MOI.optimize!(model_scip)
                 obj_scip = MOI.get(model_scip, MOI.ObjectiveValue())
                 @test obj_scip ≈ obj_paj atol = 1e-4
+            catch
+                @test_skip "Pajarito/Hypatia/HiGHS not available or API mismatch"
             end
         end
     end

@@ -419,23 +419,17 @@ if have_scip_sdp
         row_arrays = Vector{Cint}[]
         col_arrays = Vector{Cint}[]
         val_arrays = Vector{Cdouble}[]
+        # SCIP-SDP expects only lower-triangle entries (row >= col)
         for k in 1:d
             i = 1
             while (i + 1) * i ÷ 2 < k
                 i += 1
             end
             j = k - (i - 1) * i ÷ 2
-            nn = (i == j) ? 1 : 2
-            push!(nvarnonz_vec, Cint(nn))
-            if i == j
-                push!(row_arrays, Cint[i - 1])
-                push!(col_arrays, Cint[j - 1])
-                push!(val_arrays, [1.0])
-            else
-                push!(row_arrays, Cint[i - 1, j - 1])
-                push!(col_arrays, Cint[j - 1, i - 1])
-                push!(val_arrays, [1.0, 1.0])
-            end
+            push!(nvarnonz_vec, Cint(1))
+            push!(row_arrays, Cint[i - 1])
+            push!(col_arrays, Cint[j - 1])
+            push!(val_arrays, [1.0])
         end
         nnonz = sum(nvarnonz_vec)
         col_ptrs = Ptr{Cint}[pointer(a) for a in col_arrays]

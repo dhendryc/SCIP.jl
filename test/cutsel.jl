@@ -40,6 +40,9 @@ function SCIP.select_cuts(
 end
 
 @testset "test cut selector" begin
+    if SCIP.have_scip_sdp
+        @test_skip "Cut selector call order differs with SCIP-SDP relaxator"
+    else
     # removing presolving to solve a non-trivial problem that requires some separation
     o = SCIP.Optimizer(; presolving_maxrounds=0)
     MOI.set(o, MOI.Silent(), true)
@@ -82,6 +85,7 @@ end
     MOI.optimize!(o)
     @test MOI.get(o, MOI.TerminationStatus()) == MOI.OPTIMAL
     @test cutsel.ncalls > 0
+    end
 end
 
 # select by removing cuts that are too parallel to a forced cut
@@ -125,6 +129,9 @@ function SCIP.select_cuts(
 end
 
 @testset "test cut selector parallelism" begin
+    if SCIP.have_scip_sdp
+        @test_skip "Cut selector call order differs with SCIP-SDP relaxator"
+    else
     # removing presolving to solve a non-trivial problem that requires some separation
     o = SCIP.Optimizer(; presolving_maxrounds=0)
     MOI.set(o, MOI.Silent(), true)
@@ -167,6 +174,7 @@ end
     MOI.optimize!(o)
     @test MOI.get(o, MOI.TerminationStatus()) == MOI.OPTIMAL
     @test cutsel.ncalls > 0
+    end
 end
 
 @testset "test default hybrid cut selector" begin

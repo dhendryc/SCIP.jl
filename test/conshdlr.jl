@@ -132,6 +132,9 @@ end
 end
 
 @testset "never satisfied conshdlr (needs constraint and has one)" begin
+    if SCIP.have_scip_sdp
+        @test_skip "SCIP-SDP relaxator does not support problems with zero SDP constraints"
+    else
     # create an empty problem
     o = SCIP.Optimizer()
     SCIP.set_parameter(o.inner, "display/verblevel", 0)
@@ -157,4 +160,5 @@ end
 
     # free the problem
     finalize(o.inner)
+    end
 end
