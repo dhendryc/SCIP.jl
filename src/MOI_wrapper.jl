@@ -216,7 +216,7 @@ end
 
 # MOI.SolverName
 
-MOI.get(::Optimizer, ::MOI.SolverName) = "SCIP"
+MOI.get(::Optimizer, ::MOI.SolverName) = have_scip_sdp ? "SCIP-SDP" : "SCIP"
 
 # MOI.RawOptimizerAttribute
 
@@ -490,6 +490,9 @@ include(joinpath("MOI_wrapper", "linear_constraints.jl"))
 include(joinpath("MOI_wrapper", "quadratic_constraints.jl"))
 include(joinpath("MOI_wrapper", "sos_constraints.jl"))
 include(joinpath("MOI_wrapper", "indicator_constraints.jl"))
+if have_scip_sdp
+    include(joinpath("MOI_wrapper", "psd_constraints.jl"))
+end
 include(joinpath("MOI_wrapper", "nonlinear_constraints.jl"))
 include(joinpath("MOI_wrapper", "objective.jl"))
 include(joinpath("MOI_wrapper", "results.jl"))

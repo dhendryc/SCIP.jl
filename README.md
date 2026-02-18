@@ -63,6 +63,20 @@ julia> Pkg.add("SCIP")
 julia> Pkg.build("SCIP")
 ```
 
+### SCIP-SDP (mixed integer conic / PSD cone)
+
+To use [SCIP-SDP](https://www.opt.tu-darmstadt.de/scipsdp/) for problems with semidefinite (PSD) constraints, compile and install SCIP-SDP yourself, then set the **`SCIP_SDP_OPTDIR`** environment variable to the installation path (separate from `SCIPOPTDIR`) and run `Pkg.build("SCIP")`. The package will then use the SCIP-SDP library and support the PSD cone.
+
+- **Without** `SCIP_SDP_OPTDIR`: the package uses the default SCIP (JLL or `SCIPOPTDIR`) and does not support PSD constraints.
+- **With** `SCIP_SDP_OPTDIR`: the package uses the SCIP-SDP build and supports `MOI.VectorOfVariables` in `MOI.PositiveSemidefiniteConeTriangle`.
+
+SCIP-SDP can run in two modes (set before optimize):
+
+- **Branch-and-bound with SDP relaxation** (default): `relaxing/SDP/freq = 1`
+- **Outer approximation** (cutting planes only): `relaxing/SDP/freq = -1` and `lp/solvefreq = 1`
+
+Set these via `MOI.RawOptimizerAttribute`, e.g. `MOI.set(model, MOI.RawOptimizerAttribute("relaxing/SDP/freq"), -1)`.
+
 ## Use with JuMP
 
 Use SCIP with JuMP as follows:
@@ -114,6 +128,7 @@ List of supported constraint types:
  * [`MOI.VectorAffineFunction{Float64}`](@ref) in [`MOI.Indicator{MOI.ACTIVATE_ON_ONE,MOI.LessThan{Float64}}`](@ref)
  * [`MOI.VectorOfVariables`](@ref) in [`MOI.SOS1{Float64}`](@ref)
  * [`MOI.VectorOfVariables`](@ref) in [`MOI.SOS2{Float64}`](@ref)
+ * When built with SCIP-SDP (`SCIP_SDP_OPTDIR`): [`MOI.VectorOfVariables`](@ref) in [`MOI.PositiveSemidefiniteConeTriangle`](@ref)
 
 List of supported model attributes:
 

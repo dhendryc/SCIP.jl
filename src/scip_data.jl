@@ -65,7 +65,11 @@ mutable struct SCIPData
         scip = Ref{Ptr{SCIP_}}(C_NULL)
         @SCIP_CALL SCIPcreate(scip)
         @assert scip[] != C_NULL
-        @SCIP_CALL SCIPincludeDefaultPlugins(scip[])
+        if have_scip_sdp
+            @SCIP_CALL SCIPSDPincludeDefaultPlugins(scip[])
+        else
+            @SCIP_CALL SCIPincludeDefaultPlugins(scip[])
+        end
         @SCIP_CALL SCIPcreateProbBasic(scip[], "")
         scip_data = new(
             scip,
@@ -397,6 +401,67 @@ function add_indicator_constraint(scipd::SCIPData, y, x, a, rhs)
     )
     @SCIP_CALL SCIPaddCons(scipd, cons__[])
     return store_cons!(scipd, cons__)
+end
+
+# PSD constraint (only when built with SCIP-SDP)
+if have_scip_sdp
+    """
+    Add PSD constraint: symmetric matrix of variables (lower-triangle order) ⪰ 0.
+    `varrefs` has length n*(n+1)/2 for an n×n matrix; order (1,1), (2,1), (2,2), ...
+    """
+    function add_psd_constraint(scipd::SCIPData, varrefs::Vector{VarRef})
+        d = length(varrefs)
+        n = Int((sqrt(8 * d + 1) - 1) / 2)
+        @assert n * (n + 1) ÷ 2 == d "varrefs length must be n*(n+1)/2 for some n"
+        vars = [var(scipd, vr) for vr in varrefs]
+        # Lower-triangle index k (1-based) -> (i, j) 1-based: k = i*(i-1)/2 + j
+        nvarnonz_vec = Cint[]
+        row_arrays = Vector{Cint}[]
+        col_arrays = Vector{Cint}[]
+        val_arrays = Vector{Cdouble}[]
+        for k in 1:d
+            i = 1
+            while (i + 1) * i ÷ 2 < k
+                i += 1
+            end
+            j = k - (i - 1) * i ÷ 2
+            nn = (i == j) ? 1 : 2
+            push!(nvarnonz_vec, Cint(nn))
+            if i == j
+                push!(row_arrays, Cint[i - 1])
+                push!(col_arrays, Cint[j - 1])
+                push!(val_arrays, [1.0])
+            else
+                push!(row_arrays, Cint[i - 1, j - 1])
+                push!(col_arrays, Cint[j - 1, i - 1])
+                push!(val_arrays, [1.0, 1.0])
+            end
+        end
+        nnonz = sum(nvarnonz_vec)
+        col_ptrs = Ptr{Cint}[pointer(a) for a in col_arrays]
+        row_ptrs = Ptr{Cint}[pointer(a) for a in row_arrays]
+        val_ptrs = Ptr{Cdouble}[pointer(a) for a in val_arrays]
+        cons__ = Ref{Ptr{SCIP_CONS}}(C_NULL)
+        @SCIP_CALL SCIPcreateConsSdp(
+            scipd.scip[],
+            cons__,
+            Base.unsafe_convert(Cstring, ""),
+            Cint(d),
+            Cint(nnonz),
+            Cint(n),
+            pointer(nvarnonz_vec),
+            pointer(col_ptrs),
+            pointer(row_ptrs),
+            pointer(val_ptrs),
+            pointer(vars),
+            Cint(0),
+            Ptr{Cint}(C_NULL),
+            Ptr{Cint}(C_NULL),
+            Ptr{Cdouble}(C_NULL),
+        )
+        @SCIP_CALL SCIPaddCons(scipd, cons__[])
+        return store_cons!(scipd, cons__)
+    end
 end
 
 # Transform SCIP C function name as follows:

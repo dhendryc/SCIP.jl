@@ -27,6 +27,7 @@ include("sepa_support.jl")
         "eventhdlr.jl",
         "MOI_tests.jl",
         "scip_data.jl",
+        "SCIP_SDP_tests.jl",
     ]
         include(file)
     end

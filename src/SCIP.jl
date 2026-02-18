@@ -18,6 +18,11 @@ include("init.jl")
 # wrapper of SCIP library
 include("wrapper.jl")
 
+# SCIP-SDP–specific API when built with SCIP_SDP_OPTDIR
+if have_scip_sdp
+    include("LibSCIP_SDP.jl")
+end
+
 # memory management
 include("scip_data.jl")
 

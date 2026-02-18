@@ -7,10 +7,14 @@ import Libdl
 
 const depsjl_path = joinpath(@__DIR__, "..", "deps", "deps.jl")
 if isfile(depsjl_path)
-    # User-provided SCIP library
+    # User-provided SCIP or SCIP-SDP library
     include(depsjl_path)
+    if !isdefined(@__MODULE__, :have_scip_sdp)
+        const have_scip_sdp = false
+    end
 else
-    # Artifact from BinaryBuilder package
+    # Artifact from BinaryBuilder package (no SDP)
+    const have_scip_sdp = false
     import SCIP_PaPILO_jll
     if SCIP_PaPILO_jll.is_available()
         using SCIP_PaPILO_jll: libscip
