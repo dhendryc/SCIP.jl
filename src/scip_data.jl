@@ -405,6 +405,66 @@ end
 
 # PSD constraint (only when built with SCIP-SDP)
 if have_scip_sdp
+    # Lower-triangle index k (1-based) -> (i,j) 1-based: k = i*(i-1)/2 + j
+    _psd_k_to_ij(k::Int) = (i = ceil(Int, (sqrt(1 + 8k) - 1) / 2); (i, k - div((i - 1) * i, 2)))
+
+    """
+    Add PSD constraint from affine expressions. Avoids checkVarsLocks when matrix
+    entries are affine in variables that also appear in other constraints.
+    `terms_per_var`: Dict mapping VarRef => Vector{Tuple{Int,Int,Float64}} of (row, col, val) 0-based.
+    `const_vec`: constant part for lower triangle, length n*(n+1)/2, same order as MOI.
+    """
+    function add_psd_constraint_affine(
+        scipd::SCIPData,
+        varrefs::Vector{VarRef},
+        terms_per_var::Dict{VarRef,Vector{Tuple{Int,Int,Float64}}},
+        const_vec::Vector{Float64},
+    )
+        n = Int((sqrt(8 * length(const_vec) + 1) - 1) / 2)
+        @assert n * (n + 1) ÷ 2 == length(const_vec)
+        vars_ptrs = [var(scipd, vr) for vr in varrefs]
+        nvars = length(varrefs)
+        nvarnonz_vec = Cint[length(get(terms_per_var, vr, Tuple{Int,Int,Float64}[])) for vr in varrefs]
+        row_arrays = [Cint[r - 1 for (r, _, _) in get(terms_per_var, vr, Tuple{Int,Int,Float64}[])] for vr in varrefs]
+        col_arrays = [Cint[c - 1 for (_, c, _) in get(terms_per_var, vr, Tuple{Int,Int,Float64}[])] for vr in varrefs]
+        val_arrays = [Float64[v for (_, _, v) in get(terms_per_var, vr, Tuple{Int,Int,Float64}[])] for vr in varrefs]
+        nnonz = sum(length, val_arrays)
+        const_nnonz = count(!iszero, const_vec)
+        const_row = Int[]
+        const_col = Int[]
+        const_val = Float64[]
+        for (k, v) in enumerate(const_vec)
+            iszero(v) && continue
+            i, j = _psd_k_to_ij(k)
+            push!(const_row, i - 1)
+            push!(const_col, j - 1)
+            push!(const_val, -v)
+        end
+        col_ptrs = Ptr{Cint}[pointer(a) for a in col_arrays]
+        row_ptrs = Ptr{Cint}[pointer(a) for a in row_arrays]
+        val_ptrs = Ptr{Cdouble}[pointer(a) for a in val_arrays]
+        cons__ = Ref{Ptr{SCIP_CONS}}(C_NULL)
+        @SCIP_CALL SCIPcreateConsSdp(
+            scipd.scip[],
+            cons__,
+            Base.unsafe_convert(Cstring, ""),
+            Cint(nvars),
+            Cint(nnonz),
+            Cint(n),
+            pointer(nvarnonz_vec),
+            pointer(col_ptrs),
+            pointer(row_ptrs),
+            pointer(val_ptrs),
+            pointer(vars_ptrs),
+            Cint(const_nnonz),
+            length(const_col) > 0 ? pointer(const_col) : Ptr{Cint}(C_NULL),
+            length(const_row) > 0 ? pointer(const_row) : Ptr{Cint}(C_NULL),
+            length(const_val) > 0 ? pointer(const_val) : Ptr{Cdouble}(C_NULL),
+        )
+        @SCIP_CALL SCIPaddCons(scipd, cons__[])
+        return store_cons!(scipd, cons__)
+    end
+
     """
     Add PSD constraint: symmetric matrix of variables (lower-triangle order) ⪰ 0.
     `varrefs` has length n*(n+1)/2 for an n×n matrix; order (1,1), (2,1), (2,2), ...
