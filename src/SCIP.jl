@@ -21,6 +21,7 @@ include("wrapper.jl")
 # SCIP-SDP–specific API when built with SCIP_SDP_OPTDIR
 if have_scip_sdp
     include("LibSCIP_SDP.jl")
+    include("cbf_solve.jl")
 end
 
 # memory management
