@@ -11,7 +11,7 @@
     solve_cbf_with_scip_sdp(cbf_path::String; time_limit=Inf, gap=1e-6, verbose=true, sdp_mode=:oa)
 
 Load an optimization problem from a CBF file, solve with SCIP-SDP, and return
-(status, var_values_by_name, objective_value, solve_time).
+(status, var_values_by_name, objective_value, solve_time, dual_bound, rel_gap, ...).
 
 Requires SCIP-SDP (have_scip_sdp == true). Uses SCIPreadProb to load the file,
 avoiding the programmatic MOI path that triggers checkVarsLocks for models with
@@ -60,6 +60,10 @@ function solve_cbf_with_scip_sdp(
         status = SCIPgetStatus(scip)
         solve_time = SCIPgetSolvingTime(scip)
 
+        # Bounds and gap (SCIP uses minimization internally: dual = lower, primal = upper)
+        dual_bound = SCIPgetDualbound(scip)
+        rel_gap = SCIPgetGap(scip)
+
         # Diagnostics: nodes (both modes), cuts (OA mode), SDP iterations (B&B mode)
         n_nodes = Int(SCIPgetNNodes(scip))
         n_cuts_found = SCIPgetNCutsFound(scip)
@@ -90,6 +94,7 @@ function solve_cbf_with_scip_sdp(
         end
 
         return (; status, var_values, var_values_ordered, obj_val, solve_time,
+            dual_bound, rel_gap,
             n_nodes, n_cuts_found, n_cuts_applied, n_sdp_iters)
     finally
         if scip_ref[] != C_NULL
