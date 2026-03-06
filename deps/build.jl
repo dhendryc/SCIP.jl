@@ -7,7 +7,17 @@ using Libdl
 
 # Build when user provides a custom SCIP path (SCIPOPTDIR) or SCIP-SDP path (SCIP_SDP_OPTDIR).
 # SCIP_SDP_OPTDIR is a separate env var so SCIP and SCIP-SDP can be different builds.
+# Print diagnostics so users see why custom build was skipped or what was tried.
+const BUILD_VERBOSE = get(ENV, "JULIA_SCIP_BUILD_VERBOSE", "1") != "0"
+
 if !haskey(ENV, "SCIPOPTDIR") && !haskey(ENV, "SCIP_SDP_OPTDIR")
+    if BUILD_VERBOSE
+        println("SCIP build: Neither SCIPOPTDIR nor SCIP_SDP_OPTDIR is set.")
+        println("  Skipping custom build; SCIP will use the default JLL binary (no SCIP-SDP).")
+        println("  To use your SCIP-SDP installation, set SCIP_SDP_OPTDIR in the same process that runs the build:")
+        println("    In the shell before starting Julia:  export SCIP_SDP_OPTDIR=\"/path/to/SCIP-SDP/build\"")
+        println("    Or in Julia before Pkg.build():       ENV[\"SCIP_SDP_OPTDIR\"] = \"/path/to/SCIP-SDP/build\"")
+    end
     exit()
 end
 
@@ -52,6 +62,9 @@ sdp_paths = []
 # SCIP_SDP_OPTDIR: path to SCIP-SDP installation (for mixed integer conic / PSD)
 if haskey(ENV, "SCIP_SDP_OPTDIR")
     sdp_base = ENV["SCIP_SDP_OPTDIR"]
+    if BUILD_VERBOSE
+        println("SCIP build: SCIP_SDP_OPTDIR = ", repr(sdp_base))
+    end
     push!(sdp_paths, joinpath(sdp_base, "lib", libsdpname))
     push!(sdp_paths, joinpath(sdp_base, "bin", libsdpname))
     push!(sdp_paths, joinpath(sdp_base, "lib", libname))
@@ -65,17 +78,47 @@ if haskey(ENV, "SCIPOPTDIR")
 end
 
 # Try SCIP-SDP first if requested (so one build can target SDP)
+sdp_tried = String[]
 for l in sdp_paths
     try
         d = Libdl.dlopen(l)
         write_depsfile(l, true)
+        if BUILD_VERBOSE
+            println("SCIP build: Loaded SCIP-SDP from ", l)
+            println("SCIP build: have_scip_sdp = true")
+        end
         exit(0)
-    catch
-        continue
+    catch e
+        msg = sprint(showerror, e)
+        exists = isfile(l) ? " (file exists)" : " (file not found)"
+        push!(sdp_tried, "  $l$exists\n    $msg")
+        if BUILD_VERBOSE
+            println("SCIP build: Failed to load ", l, exists, ": ", e.msg)
+        end
     end
 end
 
+# If user set SCIP_SDP_OPTDIR but all SDP paths failed, error with clear diagnostics
+if haskey(ENV, "SCIP_SDP_OPTDIR") && !isempty(sdp_paths)
+    sdp_base = ENV["SCIP_SDP_OPTDIR"]
+    error("""
+SCIP_SDP_OPTDIR is set to $(repr(sdp_base)) but the SCIP-SDP library could not be loaded.
+
+Paths tried:
+$(join(sdp_tried, "\n"))
+
+Check:
+  • SCIP_SDP_OPTDIR should be the install prefix (e.g. where 'lib/' or 'bin/' contains libscipsdp).
+  • If you built from source, use the install prefix (e.g. CMAKE_INSTALL_PREFIX), not the build dir, unless the library was built in-place.
+  • On macOS, ensure the .dylib exists and 'otool -L' shows dependencies that are findable (e.g. run: otool -L $(repr(joinpath(sdp_base, "lib", libsdpname)))).
+  • Unset SCIP_SDP_OPTDIR to build with standard SCIP only, or fix the path and run: ] build SCIP
+""")
+end
+
 # Else try standard SCIP
+if BUILD_VERBOSE && haskey(ENV, "SCIP_SDP_OPTDIR")
+    println("SCIP build: All SCIP-SDP paths failed; trying standard SCIP fallback.")
+end
 push!(paths_to_try, libname)
 found = false
 tried = String[]
@@ -84,6 +127,9 @@ for l in paths_to_try
         d = Libdl.dlopen(l)
         global found = true
         write_depsfile(l, false)
+        if BUILD_VERBOSE
+            println("SCIP build: Loaded standard SCIP from ", l, " (have_scip_sdp = false)")
+        end
         break
     catch e
         push!(tried, "$(l): $(e.msg)")
@@ -92,10 +138,10 @@ end
 
 if !found && !haskey(ENV, "SCIP_JL_SKIP_LIB_CHECK")
     error("""
-Unable to locate SCIP installation. Tried SCIP_SDP_OPTDIR (libscipsdp/libscip), then:
+Unable to locate SCIP installation. Tried:
 
 $(join(tried, "\n\n"))
 
-Set SCIPOPTDIR for standard SCIP or SCIP_SDP_OPTDIR for SCIP-SDP.
+Set SCIPOPTDIR for standard SCIP or SCIP_SDP_OPTDIR for SCIP-SDP (install prefix containing lib/libscipsdp or lib/libscip).
 """)
 end

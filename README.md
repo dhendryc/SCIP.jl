@@ -77,10 +77,44 @@ SCIP-SDP can run in two modes (set before optimize):
 
 Set these via `MOI.RawOptimizerAttribute`, e.g. `MOI.set(model, MOI.RawOptimizerAttribute("relaxing/SDP/freq"), -1)`.
 
-```julia
-   export SCIP_SDP_OPTDIR="/Users/deborah/SCIP-SDP/build
-   julia --project -e 'using Pkg; Pkg.build("SCIP")'
+```bash
+export SCIP_SDP_OPTDIR="/path/to/SCIP-SDP/build"   # or install prefix; must contain lib/libscipsdp.dylib (macOS) or lib/libscipsdp.so (Linux)
+julia --project -e 'using Pkg; Pkg.build("SCIP")'
 ```
+
+**Building SCIP (or SCIP-SDP) as a dependency of another package**
+
+SCIP’s build runs when that package is built (e.g. when you `Pkg.build()` the parent project or first load a dependency that uses SCIP). The build script must **see the environment variable in the same process** that runs the build. If it doesn’t (e.g. you set it in one terminal but build from an IDE or a different shell), the script will skip the custom build and you’ll get the default JLL (no SCIP-SDP). The build script prints what it’s doing so you can confirm.
+
+**Foolproof: set the variable and run the build in one command** (so the same process sees it):
+
+```bash
+cd /path/to/your_project
+SCIP_SDP_OPTDIR="/path/to/SCIP-SDP/build" julia --project=. -e 'using Pkg; Pkg.build()'
+```
+
+Or set in the shell and then run Julia in that same shell:
+
+```bash
+export SCIP_SDP_OPTDIR="/path/to/SCIP-SDP/build"
+cd /path/to/your_project
+julia --project=. -e 'using Pkg; Pkg.build()'
+```
+
+Or set from Julia in the same session before building:
+
+```julia
+ENV["SCIP_SDP_OPTDIR"] = "/path/to/SCIP-SDP/build"
+using Pkg; Pkg.build("SCIP")   # or Pkg.build() to build the whole project
+```
+
+When the build runs you should see either `SCIP build: SCIP_SDP_OPTDIR = "..."` and then success, or `SCIP build: Neither SCIPOPTDIR nor SCIP_SDP_OPTDIR is set` if the variable wasn’t visible. Set `JULIA_SCIP_BUILD_VERBOSE=0` to suppress these messages.
+
+**If the build does not enable SCIP-SDP** even with `SCIP_SDP_OPTDIR` set:
+
+1. **Path**: `SCIP_SDP_OPTDIR` must be the directory that contains a `lib/` (or `bin/`) subdirectory with `libscipsdp.dylib` (macOS) or `libscipsdp.so` (Linux). For in-tree builds this is often the `build` directory (e.g. `SCIP-SDP/build`).
+2. **Rebuild**: With `SCIP_SDP_OPTDIR` set in the environment, run `Pkg.build("SCIP")` from your project (e.g. `julia --project=. -e 'using Pkg; Pkg.build("SCIP")'`). If SCIP is a dependency, its package dir is in your Julia depot; you can delete that copy’s `deps/deps.jl` and run `Pkg.build("SCIP")` again to force the build to run.
+3. **Load errors**: If the library exists but loading fails, check dependencies (e.g. on macOS run `otool -L $SCIP_SDP_OPTDIR/lib/libscipsdp.dylib`) and ensure any required libraries (BLAS, Lapack, etc.) are on your library path.
 
 ## Use with JuMP
 
