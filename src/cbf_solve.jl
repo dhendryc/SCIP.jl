@@ -8,10 +8,14 @@
 # when variables appear in both SDP and linear constraints.
 
 """
-    solve_cbf_with_scip_sdp(cbf_path::String; time_limit=Inf, gap=1e-6, verbose=true, sdp_mode=:oa)
+    solve_cbf_with_scip_sdp(cbf_path::String; time_limit=Inf, gap=1e-2, absgap=1e-6, verbose=true, sdp_mode=:oa)
 
 Load an optimization problem from a CBF file, solve with SCIP-SDP, and return
 (status, var_values_by_name, objective_value, solve_time, dual_bound, rel_gap, ...).
+
+- `gap`: relative optimality gap limit (SCIP `limits/gap`). Solving stops when relative gap is below this.
+- `absgap`: optional absolute optimality gap limit (SCIP `limits/absgap`). If set, solving also stops when
+  |primal - dual| is below this value.
 
 Requires SCIP-SDP (have_scip_sdp == true). Uses SCIPreadProb to load the file,
 avoiding the programmatic MOI path that triggers checkVarsLocks for models with
@@ -24,7 +28,8 @@ variables in both SDP and linear constraints.
 function solve_cbf_with_scip_sdp(
     cbf_path::String;
     time_limit = Inf,
-    gap = 1e-6,
+    gap = 1e-2,
+    absgap = 1e-6,
     verbose = true,
     sdp_mode = :oa,
 )
@@ -45,6 +50,7 @@ function solve_cbf_with_scip_sdp(
             _set_param(scip, "limits/time", time_limit)
         end
         _set_param(scip, "limits/gap", gap)
+        _set_param(scip, "limits/absgap", absgap)
         _set_param(scip, "display/verblevel", verbose ? 4 : 0)
 
         # Solving mode: B&B with SDP relaxations vs outer approximation
