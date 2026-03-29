@@ -16,6 +16,10 @@ Load an optimization problem from a CBF file, solve with SCIP-SDP, and return
 - `gap`: relative optimality gap limit (SCIP `limits/gap`). Solving stops when relative gap is below this.
 - `absgap`: optional absolute optimality gap limit (SCIP `limits/absgap`). If set, solving also stops when
   |primal - dual| is below this value.
+- `presolving`: if `true` (default), use SCIP presolving (`presolving/maxrounds = -1`). If `false`, disable
+  presolving (`presolving/maxrounds = 0`).
+- `symmetry`: if `true` (default), enable symmetry handling (`misc/usesymmetry = 1`). If `false`, disable
+  symmetry detection / propagation (`misc/usesymmetry = 0`).
 
 Requires SCIP-SDP (have_scip_sdp == true). Uses SCIPreadProb to load the file,
 avoiding the programmatic MOI path that triggers checkVarsLocks for models with
@@ -32,6 +36,8 @@ function solve_cbf_with_scip_sdp(
     absgap = 1e-6,
     verbose = true,
     sdp_mode = :oa,
+    presolving = true,
+    symmetry = true,
 )
     @assert have_scip_sdp "SCIP-SDP required. Set SCIP_SDP_OPTDIR and rebuild SCIP."
     isfile(cbf_path) || error("CBF file not found: $cbf_path")
@@ -52,6 +58,10 @@ function solve_cbf_with_scip_sdp(
         _set_param(scip, "limits/gap", gap)
         _set_param(scip, "limits/absgap", absgap)
         _set_param(scip, "display/verblevel", verbose ? 4 : 0)
+
+        # Presolving and symmetry (same semantics as SCIP.jl MOI `Presolving` and `misc/usesymmetry`)
+        _set_param(scip, "presolving/maxrounds", presolving ? -1 : 0)
+        _set_param(scip, "misc/usesymmetry", symmetry ? 1 : 0)
 
         # Solving mode: B&B with SDP relaxations vs outer approximation
         if sdp_mode === :bnb
