@@ -110,6 +110,10 @@ using Pkg; Pkg.build("SCIP")   # or Pkg.build() to build the whole project
 
 When the build runs you should see either `SCIP build: SCIP_SDP_OPTDIR = "..."` and then success, or `SCIP build: Neither SCIPOPTDIR nor SCIP_SDP_OPTDIR is set` if the variable wasn’t visible. Set `JULIA_SCIP_BUILD_VERBOSE=0` to suppress these messages.
 
+**If SCIP was already built without `SCIP_SDP_OPTDIR`**, the build script may not run again (Julia treats the package as already built). Force a rebuild by either:
+- **Remove and re-add:** `] rm SCIP` then `] add SCIP`, set `SCIP_SDP_OPTDIR` in the same process, then `] build SCIP` (or build your project), or
+- **Delete cached deps:** remove the file `deps/deps.jl` inside the SCIP.jl package in your Julia depot (e.g. `~/.julia/scratchspaces/.../SCIP/.../deps/deps.jl` or under your project’s artifact/depot), then run `] build SCIP` with `SCIP_SDP_OPTDIR` set.
+
 **If the build does not enable SCIP-SDP** even with `SCIP_SDP_OPTDIR` set:
 
 1. **Path**: `SCIP_SDP_OPTDIR` must be the directory that contains a `lib/` (or `bin/`) subdirectory with `libscipsdp.dylib` (macOS) or `libscipsdp.so` (Linux). For in-tree builds this is often the `build` directory (e.g. `SCIP-SDP/build`).
