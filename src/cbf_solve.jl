@@ -11,8 +11,7 @@
     solve_cbf_with_scip_sdp(cbf_path::String; time_limit=Inf, gap=1e-2, absgap=1e-6, verbose=true, sdp_mode=:oa)
 
 Load an optimization problem from a CBF file, solve with SCIP-SDP, and return
-(status, var_values_by_name, objective_value, solve_time, dual_bound, rel_gap, ...).
-
+(status, var_values_ordered, var_values_transformed, obj_val, solve_time, dual_bound, rel_gap, ...).
 - `gap`: relative optimality gap limit (SCIP `limits/gap`). Solving stops when relative gap is below this.
 - `absgap`: optional absolute optimality gap limit (SCIP `limits/absgap`). If set, solving also stops when
   |primal - dual| is below this value.
@@ -101,30 +100,28 @@ function solve_cbf_with_scip_sdp(
         n_cuts_applied = SCIPgetNCutsApplied(scip)
         n_sdp_iters = SCIPrelaxSDPgetNIterations(scip)
 
-        var_values = Dict{String,Float64}()
         var_values_ordered = Float64[]
+        var_values_transformed = Float64[]
         obj_val = NaN
 
         sol = SCIPgetBestSol(scip)
         if sol != C_NULL
             obj_val = SCIPgetSolOrigObj(scip, sol)
-            nvars = SCIPgetNVars(scip)
-            if nvars > 0
-                vars_ptr = SCIPgetVars(scip)
-                var_arr = unsafe_wrap(Array{Ptr{SCIP_VAR}}, vars_ptr, nvars)
-                sizehint!(var_values_ordered, nvars)
-                for i in 1:nvars
-                    v = var_arr[i]
-                    name_ptr = SCIPvarGetName(v)
-                    name = name_ptr == C_NULL ? "" : unsafe_string(name_ptr)
-                    val = SCIPgetSolVal(scip, sol, v)
-                    var_values[name] = val
-                    push!(var_values_ordered, val)
-                end
-            end
+            var_values_ordered = _collect_var_values(
+                scip,
+                sol,
+                SCIPgetOrigVars(scip),
+                SCIPgetNOrigVars(scip),
+            )
+            var_values_transformed = _collect_var_values(
+                scip,
+                sol,
+                SCIPgetVars(scip),
+                SCIPgetNVars(scip),
+            )
         end
 
-        return (; status, var_values, var_values_ordered, obj_val, solve_time,
+        return (; status, var_values_ordered, var_values_transformed, obj_val, solve_time,
             dual_bound, rel_gap,
             n_nodes, n_cuts_found, n_cuts_applied, n_sdp_iters)
     finally
@@ -132,6 +129,17 @@ function solve_cbf_with_scip_sdp(
             @SCIP_CALL SCIPfree(scip_ref)
         end
     end
+end
+
+function _collect_var_values(scip, sol, vars_ptr, nvars)
+    values_ordered = Float64[]
+    nvars <= 0 && return values_ordered
+    var_arr = unsafe_wrap(Array{Ptr{SCIP_VAR}}, vars_ptr, Int(nvars))
+    sizehint!(values_ordered, Int(nvars))
+    for i in 1:Int(nvars)
+        push!(values_ordered, SCIPgetSolVal(scip, sol, var_arr[i]))
+    end
+    return values_ordered
 end
 
 function _set_param(scip::Ptr{SCIP_}, name::AbstractString, value)
